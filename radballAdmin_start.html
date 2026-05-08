@@ -97,42 +97,16 @@ tr:hover td { background: #fafaf7; }
 </head>
 <body>
 
-<!-- Login Screen -->
-<div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f5f0">
-  <div style="background:#fff;border:0.5px solid #e0e0d8;border-radius:14px;padding:36px 32px;width:360px;max-width:95vw">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-      <div style="width:32px;height:32px;background:#1a1a1a;border-radius:7px;display:flex;align-items:center;justify-content:center">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><line x1="12" y1="5" x2="12" y2="2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-      </div>
-      <span style="font-size:16px;font-weight:500">Radball Admin</span>
-    </div>
-    <div style="font-size:13px;color:#888;margin-bottom:26px">Bitte melde dich mit deinem Admin-Account an.</div>
-    <div style="margin-bottom:13px">
-      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">E-Mail</label>
-      <input id="login-email" type="email" placeholder="admin@radball.de"
-        style="border:0.5px solid #ddd;border-radius:6px;padding:9px 12px;font-size:14px;width:100%;outline:none"
-        onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <div style="margin-bottom:20px">
-      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">Passwort</label>
-      <input id="login-pw" type="password" placeholder="••••••••"
-        style="border:0.5px solid #ddd;border-radius:6px;padding:9px 12px;font-size:14px;width:100%;outline:none"
-        onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <div id="login-err" style="color:#e03535;font-size:12px;margin-bottom:10px;display:none"></div>
-    <button onclick="doLogin()" id="login-btn"
-      style="background:#1a1a1a;color:#fff;border:none;padding:10px;border-radius:7px;font-size:14px;width:100%;cursor:pointer;font-weight:500">
-      Anmelden
-    </button>
-    <button onclick="loadDemo()"
-      style="background:none;border:0.5px solid #ddd;color:#888;padding:9px;border-radius:7px;font-size:13px;width:100%;cursor:pointer;margin-top:8px">
-      Demo ohne Login
-    </button>
-    <div style="font-size:11px;color:#ccc;text-align:center;margin-top:16px">Zugang nur für autorisierte Admins</div>
-  </div>
+<!-- Setup Banner -->
+<div id="setup-banner">
+  <span style="font-weight:500;white-space:nowrap">⚙ Supabase</span>
+  <input id="sb-url" placeholder="https://xxxx.supabase.co" />
+  <input id="sb-key" placeholder="Anon Key (eyJh...)" type="password" />
+  <button onclick="connectSB()">Verbinden</button>
+  <button onclick="loadDemo()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)">Demo</button>
 </div>
 
-<div class="app" style="display:none">
+<div class="app">
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-logo">⚙ Radball Admin<span id="sb-status">Nicht verbunden</span></div>
@@ -285,55 +259,8 @@ tr:hover td { background: #fafaf7; }
 <div id="toast"></div>
 
 <script>
-// ── Supabase-Konfiguration (hier eintragen!) ─────────────────
-const SB_URL = 'https://btpohaqsqajmwztmrrcp.supabase.co/rest/v1/;  // ← anpassen
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0cG9oYXFzcWFqbXd6dG1ycmNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDY1NzEsImV4cCI6MjA5MzcyMjU3MX0.wQzp50utSWzOWZrOL4BM1s9dbiPk8duLajh9B7bBSOM';            // ← anpassen
-
-// ── Login ────────────────────────────────────────────────────
-async function doLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const pw    = document.getElementById('login-pw').value;
-  const err   = document.getElementById('login-err');
-  const btn   = document.getElementById('login-btn');
-  if (!email || !pw) { showLoginErr('Bitte E-Mail und Passwort eingeben.'); return; }
-
-  btn.textContent = 'Anmelden…'; btn.disabled = true;
-  sb = createSBClient(SB_URL, SB_KEY);
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
-  btn.textContent = 'Anmelden'; btn.disabled = false;
-
-  if (error) { showLoginErr('Falsche E-Mail oder falsches Passwort.'); sb = null; return; }
-
-  // Admin-Profil laden
-  const { data: profile } = await sb.from('admin_profiles').select('*').eq('id', data.user.id);
-  const p = profile?.[0];
-  document.getElementById('user-name').textContent  = p?.name  || email;
-  document.getElementById('user-role').textContent  = p?.role  || 'admin';
-  document.getElementById('sb-status').textContent  = 'Verbunden';
-
-  showApp();
-  await loadAllFromSB();
-  setupRealtime();
-}
-
-function showLoginErr(msg) {
-  const el = document.getElementById('login-err');
-  el.textContent = msg; el.style.display = 'block';
-}
-
-function showApp() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.querySelector('.app').style.display = 'flex';
-}
-
-function logout() {
-  if (sb) sb.auth.signOut();
-  sb = null; demoMode = false;
-  document.getElementById('login-screen').style.display = 'flex';
-  document.querySelector('.app').style.display = 'none';
-  document.getElementById('login-pw').value = '';
-  document.getElementById('login-err').style.display = 'none';
-}
+// ── Minimaler Supabase-Client ────────────────────────────────
+let sb = null;
 
 function createSBClient(url, key) {
   const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
@@ -431,10 +358,10 @@ let demoMode = false;
 // ── Demo-Daten ───────────────────────────────────────────────
 function loadDemo() {
   demoMode = true;
+  document.getElementById('setup-banner').classList.add('hidden');
+  document.getElementById('sb-status').textContent = 'Demo-Modus';
   document.getElementById('user-name').textContent = 'Demo Admin';
   document.getElementById('user-role').textContent = 'superadmin';
-  document.getElementById('sb-status').textContent = 'Demo-Modus';
-  showApp();
 
   allCountries = [
     {id:1,code:'de',name:'Deutschland',flag:'🇩🇪'},{id:2,code:'ch',name:'Schweiz',flag:'🇨🇭'},
@@ -490,8 +417,8 @@ function loadDemo() {
 
 // ── Supabase verbinden ───────────────────────────────────────
 async function connectSB() {
-  const url = document.getElementById('sb-url').value.trim();
-  const key = document.getElementById('sb-key').value.trim();
+  const url = 'https://btpohaqsqajmwztmrrcp.supabase.co/rest/v1/'; //document.getElementById('sb-url').value.trim();
+  const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0cG9oYXFzcWFqbXd6dG1ycmNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDY1NzEsImV4cCI6MjA5MzcyMjU3MX0.wQzp50utSWzOWZrOL4BM1s9dbiPk8duLajh9B7bBSOM';//document.getElementById('sb-key').value.trim();
   if (!url || !key) { toast('Bitte URL und Key eingeben'); return; }
   sb = createSBClient(url, key);
   document.getElementById('sb-status').textContent = url.split('.')[0].replace('https://','');
