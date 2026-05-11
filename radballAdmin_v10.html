@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin V11</title>
+<title>Radball Admin V10</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -299,7 +299,7 @@ async function doLogin() {
 
   btn.textContent = 'Anmelden…'; btn.disabled = true;
   sb = createSBClient(SB_URL, SB_KEY);
-  console.log('[Admin] sb (doLogin) erstellt:', !!sb);
+  console.log('[Admin] sb erstellt:', !!sb)
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
   btn.textContent = 'Anmelden'; btn.disabled = false;
 
@@ -523,7 +523,6 @@ async function connectSB() {
   const key = document.getElementById('sb-key').value.trim();
   if (!url || !key) { toast('Bitte URL und Key eingeben'); return; }
   sb = createSBClient(url, key);
-  console.log('[Admin] sb (connectSB) erstellt:', !!sb)
   document.getElementById('sb-status').textContent = url.split('.')[0].replace('https://','');
   document.getElementById('setup-banner').classList.add('hidden');
   await loadAllFromSB();
@@ -532,30 +531,9 @@ async function connectSB() {
 }
 
 async function loadAllFromSB() {
-  console.log('[Admin] loadAllFromSB gestartet');
-  try {
-    console.log('[Admin] lade Leagues…');
-    await loadLeagues();
-    console.log('[Admin] lade Clubs…');
-    await loadClubs();
-    console.log('[Admin] lade Countries…');
-    await loadCountries();
-    console.log('[Admin] lade Matches…');
-    await loadMatches();
-    console.log('[Admin] lade Tournaments…');
-    await loadTournaments();
-    console.log('[Admin] lade WC…');
-    await loadWC();
-    console.log('[Admin] lade Users…');
-    await loadUsers();
-    console.log('[Admin] updateDash…');
-    updateDash();
-    console.log('[Admin] alles geladen ✓');
-    toast('✓ Daten geladen');
-  } catch(e) {
-    console.error('[Admin] Fehler in loadAllFromSB:', e);
-    toast('Fehler beim Laden: ' + e.message);
-  }
+  await Promise.all([loadLeagues(), loadClubs(), loadCountries()]);
+  await Promise.all([loadMatches(), loadTournaments(), loadWC(), loadUsers()]);
+  updateDash();
 }
 
 async function loadCountries() {
