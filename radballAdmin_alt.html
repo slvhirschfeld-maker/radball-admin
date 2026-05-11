@@ -286,8 +286,8 @@ tr:hover td { background: #fafaf7; }
 
 <script>
 // ── Supabase-Konfiguration (hier eintragen!) ─────────────────
-const SB_URL = 'https://DEIN-PROJEKT.supabase.co';  // ← anpassen
-const SB_KEY = 'eyJh...DEIN-ANON-KEY...';            // ← anpassen
+const SB_URL = 'https://btpohaqsqajmwztmrrcp.supabase.co';  // ← anpassen
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0cG9oYXFzcWFqbXd6dG1ycmNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDY1NzEsImV4cCI6MjA5MzcyMjU3MX0.wQzp50utSWzOWZrOL4BM1s9dbiPk8duLajh9B7bBSOM';            // ← anpassen
 
 // ── Login ────────────────────────────────────────────────────
 async function doLogin() {
@@ -691,7 +691,6 @@ function renderUsers() {
         <td style="display:flex;gap:5px">
           <button class="btn-out sm" onclick="openUserModal(${u.id})">✏️</button>
           <button class="btn-out sm" onclick="toggleUser(${u.id})">${u.active?'Sperren':'Aktivieren'}</button>
-          <button class="btn-out sm" onclick="resetPassword('${u.email}')" title="Passwort-Reset senden">🔑</button>
         </td>
       </tr>`).join('')
     : '<tr><td colspan="6" class="empty">Keine Benutzer</td></tr>';
@@ -923,47 +922,9 @@ async function saveUser(id) {
     else allUsers.push({...data, id:Date.now()});
     renderUsers(); closeModal(); toast('✓ Gespeichert'); return;
   }
-  // Profil-Daten in admin_profiles aktualisieren
-  if (id) {
-    const data = { name:val('u-name'), role:val('u-role'), country_id: val('u-country')||null };
-    const {error} = await sb.from('admin_profiles').update(data).eq('id', id);
-    if (error) { toast('Fehler: ' + error.message); return; }
-    await loadUsers(); closeModal(); toast('✓ Profil gespeichert');
-  } else {
-    // Neuen User per Supabase Auth Magic-Link einladen
-    const email = val('u-email');
-    const name  = val('u-name');
-    const role  = val('u-role');
-    const cid   = val('u-country');
-    // Admin-Einladung: sendet Magic-Link via Supabase Auth
-    const res = await fetch(`${SB_URL}/auth/v1/invite`, {
-      method: 'POST',
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        data: { name, role, country_id: cid ? +cid : null }
-      })
-    });
-    if (res.ok) {
-      toast(`✓ Einladung an ${email} gesendet`);
-      closeModal();
-      setTimeout(loadUsers, 1500); // kurz warten bis Trigger feuert
-    } else {
-      const err = await res.json();
-      toast('Fehler: ' + (err.msg || err.message || 'Unbekannt'));
-    }
-  }
-}
-
-async function resetPassword(email) {
-  if (demoMode) { toast('Demo: Passwort-Reset simuliert für ' + email); return; }
-  const res = await fetch(`${SB_URL}/auth/v1/recover`, {
-    method: 'POST',
-    headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email })
-  });
-  if (res.ok) toast(`✓ Passwort-Reset-E-Mail an ${email} gesendet`);
-  else toast('Fehler beim Senden der Reset-E-Mail');
+  // Echter Supabase-Call: neuen User per Admin-API einladen
+  toast('ℹ️ User-Verwaltung erfolgt über Supabase Dashboard → Auth');
+  closeModal();
 }
 
 function toggleUser(id) {
