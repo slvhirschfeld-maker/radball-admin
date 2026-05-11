@@ -48,17 +48,6 @@ button.red { background: #c0392b; }
   </div>
 </div>
 
-<!-- Token & Login -->
-<div class="card">
-  <div class="card-title">JWT-Token prüfen & Login testen</div>
-  <div class="row">
-    <input id="d-email" type="email" placeholder="admin@radball.de" />
-    <input id="d-pw" type="password" placeholder="Passwort" />
-    <button class="green" onclick="debugLogin()">Einloggen & Token prüfen</button>
-    <button onclick="testToken()">Nur Token prüfen</button>
-  </div>
-</div>
-
 <!-- Tests -->
 <div class="card">
   <div class="card-title">Einzelne Tabellen testen</div>
@@ -223,100 +212,6 @@ async function testRLS() {
     setStatus('rls', 'err');
     log(`✗ RLS-Test Fehler: ${e.message}`, 'err');
   }
-}
-
-async function testToken() {
-  if (!getConn()) return;
-  log('→ Prüfe gespeicherten JWT-Token …', 'info');
-
-  const token = localStorage.getItem('rb_token');
-  if (!token) { log('✗ Kein Token in localStorage gefunden – bitte zuerst einloggen!', 'err'); return; }
-
-  // Token dekodieren (ohne Verifikation)
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) { log('✗ Token hat falsches Format!', 'err'); return; }
-    const payload = JSON.parse(atob(parts[1]));
-    const exp = new Date(payload.exp * 1000);
-    const now = new Date();
-    const expired = now > exp;
-    log(`Token gefunden:`, 'info');
-    log(`  sub (User-ID): ${payload.sub}`, 'ok');
-    log(`  email: ${payload.email || '–'}`, 'ok');
-    log(`  role: ${payload.role}`, payload.role === 'authenticated' ? 'ok' : 'err');
-    log(`  Ablauf: ${exp.toLocaleString()} ${expired ? '❌ ABGELAUFEN!' : '✓ gültig'}`, expired ? 'err' : 'ok');
-    if (expired) log('  → Bitte neu einloggen, Token ist abgelaufen!', 'warn');
-  } catch(e) { log('✗ Token konnte nicht dekodiert werden: ' + e.message, 'err'); return; }
-
-  // Token gegen Supabase prüfen
-  log('→ Teste Token gegen Supabase /auth/v1/user …', 'info');
-  try {
-    const r = await fetch(`${url}/auth/v1/user`, {
-      headers: { apikey: key, Authorization: `Bearer ${localStorage.getItem('rb_token')}` }
-    });
-    const d = await r.json();
-    if (r.ok) {
-      log(`✓ Token gültig! User: ${d.email}`, 'ok');
-      log(`  ID: ${d.id}`, 'ok');
-    } else {
-      log(`✗ Token ungültig: ${d.msg || d.message || JSON.stringify(d)}`, 'err');
-      log('  → Bitte neu einloggen!', 'warn');
-    }
-  } catch(e) { log('✗ Fehler: ' + e.message, 'err'); }
-
-  // Teste Abfrage MIT Token
-  log('→ Teste clubs-Abfrage MIT Token …', 'info');
-  try {
-    const r = await fetch(`${url}/rest/v1/clubs?select=id,name&limit=3`, {
-      headers: { apikey: key, Authorization: `Bearer ${localStorage.getItem('rb_token')}` }
-    });
-    const d = await r.json();
-    if (r.ok && Array.isArray(d) && d.length > 0) {
-      log(`✓ clubs MIT Token: ${d.length} Zeilen → ${d.map(c=>c.name).join(', ')}`, 'ok');
-    } else {
-      log(`✗ clubs MIT Token: HTTP ${r.status} → ${JSON.stringify(d)}`, 'err');
-    }
-  } catch(e) { log('✗ Fehler: ' + e.message, 'err'); }
-
-  // Teste Abfrage OHNE Token (Anon)
-  log('→ Teste clubs-Abfrage OHNE Token (anonym) …', 'info');
-  try {
-    const r = await fetch(`${url}/rest/v1/clubs?select=id,name&limit=3`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
-    });
-    const d = await r.json();
-    if (r.ok && Array.isArray(d) && d.length > 0) {
-      log(`✓ clubs OHNE Token: ${d.length} Zeilen → public read policy aktiv`, 'ok');
-    } else {
-      log(`⚠️  clubs OHNE Token: 0 Zeilen → public read policy fehlt oder greift nicht`, 'warn');
-    }
-  } catch(e) { log('✗ Fehler: ' + e.message, 'err'); }
-}
-
-// Login direkt im Debug-Tool
-async function debugLogin() {
-  if (!getConn()) return;
-  const email = document.getElementById('d-email').value.trim();
-  const pw    = document.getElementById('d-pw').value;
-  if (!email || !pw) { log('⚠️  Bitte E-Mail und Passwort eingeben', 'warn'); return; }
-  log(`→ Login als ${email} …`, 'info');
-  try {
-    const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { apikey: key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: pw })
-    });
-    const d = await r.json();
-    if (r.ok && d.access_token) {
-      localStorage.setItem('rb_token', d.access_token);
-      log(`✓ Login erfolgreich! Token gespeichert.`, 'ok');
-      log(`  User: ${d.user?.email} | Role: ${d.user?.role}`, 'ok');
-      log('→ Starte Token-Prüfung …', 'info');
-      await testToken();
-    } else {
-      log(`✗ Login fehlgeschlagen: ${d.error_description || d.msg || JSON.stringify(d)}`, 'err');
-    }
-  } catch(e) { log('✗ Fehler: ' + e.message, 'err'); }
 }
 
 async function runAll() {
