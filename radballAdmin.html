@@ -551,6 +551,7 @@ async function loadAllFromSB() {
     console.log('[Admin] updateDash…');
     updateDash();
     console.log('[Admin] alles geladen ✓');
+	renderAll();
     toast('✓ Daten geladen');
   } catch(e) {
     console.error('[Admin] Fehler in loadAllFromSB:', e);
