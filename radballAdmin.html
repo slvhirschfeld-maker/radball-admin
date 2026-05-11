@@ -570,6 +570,8 @@ async function loadLeagues() {
 async function loadClubs() {
   const {data} = await sb.from('clubs').select('*, country:countries(flag), association:associations(code)').order('name');
   allClubs = data || [];
+  console.log('LoadClubs');
+  console.table(data);
 }
 async function loadMatches() {
   const lid = document.getElementById('filter-league')?.value;
@@ -620,6 +622,8 @@ function setupRealtime() {
 
 // ── Render-Funktionen ────────────────────────────────────────
 function renderAll() {
+console.log('renderAll');
+console.table(allClubs);
   fillLeagueFilter();
   renderMatches(); renderTournaments(); renderLeagues();
   renderClubs(); renderWC(); renderUsers(); updateDash();
