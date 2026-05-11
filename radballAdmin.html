@@ -706,8 +706,11 @@ function renderLeagues() {
 }
 
 function renderClubs() {
+console.log('function renderClubs');
   const s = (document.getElementById('club-search')?.value||'').toLowerCase();
+  console.log('function renderClubs gesucht: ' + s);
   const data = s ? allClubs.filter(c=>c.name.toLowerCase().includes(s)) : allClubs;
+  console.table(data);
   document.getElementById('clubs-body').innerHTML = data.length
     ? data.map(c=>`<tr>
         <td style="font-weight:500">${c.name}</td>
