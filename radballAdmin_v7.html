@@ -336,18 +336,9 @@ function logout() {
 }
 
 function createSBClient(url, key) {
+  const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
   const base = url.replace(/\/$/, '') + '/rest/v1';
   const authBase = url.replace(/\/$/, '') + '/auth/v1';
-
-  // Token nach Login verwenden, sonst Anon-Key
-  const getHeaders = () => {
-    const token = localStorage.getItem('rb_token') || key;
-    return {
-      apikey: key,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    };
-  };
 
   const client = {
     _url: url, _key: key,
@@ -361,21 +352,21 @@ function createSBClient(url, key) {
         update(data) {
           return { eq(c,v) {
             return fetch(`${base}/${table}?${c}=eq.${v}`, {
-              method:'PATCH', headers:{ ...getHeaders(), Prefer:'return=representation' },
+              method:'PATCH', headers:{ ...h, Prefer:'return=representation' },
               body: JSON.stringify(data)
             }).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
           }};
         },
         insert(data) {
           return fetch(`${base}/${table}`, {
-            method:'POST', headers:{ ...getHeaders(), Prefer:'return=representation' },
+            method:'POST', headers:{ ...h, Prefer:'return=representation' },
             body: JSON.stringify(data)
           }).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
         },
         delete() {
           return { eq(c,v) {
             return fetch(`${base}/${table}?${c}=eq.${v}`, {
-              method:'DELETE', headers:getHeaders()
+              method:'DELETE', headers:h
             }).then(()=>({error:null})).catch(e=>({error:e}));
           }};
         },
@@ -384,7 +375,7 @@ function createSBClient(url, key) {
           _fil.forEach(f => u += `&${f}`);
           if (_ord) u += `&order=${_ord}`;
           if (_lim) u += `&limit=${_lim}`;
-          fetch(u, { headers: getHeaders() })
+          fetch(u, { headers:h })
             .then(r=>r.json())
             .then(d=>resolve({data:Array.isArray(d)?d:[],error:null}))
             .catch(e=>resolve({data:[],error:e}));
@@ -401,18 +392,12 @@ function createSBClient(url, key) {
           });
           const d = await r.json();
           if (d.error) return { data:null, error:d.error };
-          // Token speichern – ab jetzt wird er für alle Requests verwendet
           localStorage.setItem('rb_token', d.access_token);
-          localStorage.setItem('rb_refresh', d.refresh_token || '');
           localStorage.setItem('rb_user', JSON.stringify(d.user));
           return { data:d, error:null };
         } catch(e) { return { data:null, error:e }; }
       },
-      async signOut() {
-        localStorage.removeItem('rb_token');
-        localStorage.removeItem('rb_refresh');
-        localStorage.removeItem('rb_user');
-      },
+      async signOut() { localStorage.removeItem('rb_token'); localStorage.removeItem('rb_user'); },
       getUser() {
         const u = localStorage.getItem('rb_user');
         return { data: { user: u ? JSON.parse(u) : null } };
