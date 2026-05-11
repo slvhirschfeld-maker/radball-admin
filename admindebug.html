@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supabase Debug</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #e0e0e0; padding: 20px; font-size: 13px; }
+h1 { font-size: 15px; margin-bottom: 16px; color: #fff; }
+.row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+input { background: #2a2a2a; border: 1px solid #444; color: #fff; padding: 7px 12px; border-radius: 6px; font-size: 13px; flex: 1; min-width: 200px; outline: none; }
+input:focus { border-color: #888; }
+button { background: #1a56a8; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+button:hover { background: #2468c0; }
+button.green { background: #2a7a1e; }
+button.green:hover { background: #236818; }
+button.red { background: #c0392b; }
+.result-box { background: #111; border: 1px solid #333; border-radius: 8px; padding: 14px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
+.result-box pre { font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+.ok    { color: #4caf50; }
+.err   { color: #f44336; }
+.warn  { color: #ff9800; }
+.info  { color: #64b5f6; }
+.label { font-size: 11px; color: #888; margin-bottom: 6px; display: block; }
+.card  { background: #222; border: 1px solid #333; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.card-title { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+.test-btn { background: #2a2a2a; border: 1px solid #444; color: #ccc; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; margin: 3px; }
+.test-btn:hover { background: #333; color: #fff; }
+.status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #555; margin-right: 6px; }
+.status.ok { background: #4caf50; }
+.status.err { background: #f44336; }
+.status.pending { background: #ff9800; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+</style>
+</head>
+<body>
+
+<h1>🔧 Supabase Debug-Tool – Radball Admin</h1>
+
+<!-- Verbindung -->
+<div class="card">
+  <div class="card-title">Verbindung</div>
+  <div class="row">
+    <input id="d-url" placeholder="https://xxxx.supabase.co" />
+    <input id="d-key" placeholder="Anon Key (eyJh...)" type="password" />
+    <button onclick="runAll()">Alle Tests starten</button>
+  </div>
+</div>
+
+<!-- Tests -->
+<div class="card">
+  <div class="card-title">Einzelne Tabellen testen</div>
+  <div>
+    <button class="test-btn" onclick="testTable('countries','*')"><span id="s-countries" class="status"></span>countries</button>
+    <button class="test-btn" onclick="testTable('leagues','*, country:countries(code,flag)')"><span id="s-leagues" class="status"></span>leagues</button>
+    <button class="test-btn" onclick="testTable('clubs','*, country:countries(flag)')"><span id="s-clubs" class="status"></span>clubs</button>
+    <button class="test-btn" onclick="testTable('matches','id,home_score,away_score,status,round,match_date')"><span id="s-matches" class="status"></span>matches</button>
+    <button class="test-btn" onclick="testTable('teams','id,player1,player2')"><span id="s-teams" class="status"></span>teams</button>
+    <button class="test-btn" onclick="testTable('tournaments','*')"><span id="s-tournaments" class="status"></span>tournaments</button>
+    <button class="test-btn" onclick="testTable('worldcup_rounds','*')"><span id="s-worldcup_rounds" class="status"></span>worldcup_rounds</button>
+    <button class="test-btn" onclick="testTable('admin_profiles','*')"><span id="s-admin_profiles" class="status"></span>admin_profiles</button>
+    <button class="test-btn" onclick="testTable('league_standings','*')"><span id="s-league_standings" class="status"></span>league_standings (View)</button>
+    <button class="test-btn" onclick="testTable('associations','*')"><span id="s-associations" class="status"></span>associations</button>
+  </div>
+</div>
+
+<!-- Join-Test -->
+<div class="card">
+  <div class="card-title">Join-Abfragen testen (wie Admin-App)</div>
+  <div>
+    <button class="test-btn" onclick="testJoin()"><span id="s-join" class="status"></span>matches mit Teams & Ligen</button>
+    <button class="test-btn" onclick="testAuth()"><span id="s-auth" class="status"></span>Auth-Endpunkt erreichbar</button>
+    <button class="test-btn" onclick="testRLS()"><span id="s-rls" class="status"></span>RLS – Schreiben erlaubt?</button>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="card">
+  <div class="card-title">Log <button class="red" style="font-size:11px;padding:3px 9px;float:right" onclick="clearLog()">Leeren</button></div>
+  <div class="result-box" id="log"><pre class="info">Bereit. Gib URL + Key ein und klicke „Alle Tests starten".</pre></div>
+</div>
+
+<script>
+let url = '', key = '';
+
+function log(msg, cls='') {
+  const box = document.getElementById('log');
+  const el = document.createElement('pre');
+  el.className = cls;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+function setStatus(id, state) {
+  const el = document.getElementById('s-' + id);
+  if (el) { el.className = 'status ' + state; }
+}
+
+function getConn() {
+  url = document.getElementById('d-url').value.trim().replace(/\/$/, '');
+  key = document.getElementById('d-key').value.trim();
+  if (!url || !key) { log('⚠️  Bitte URL und Key eingeben!', 'warn'); return false; }
+  return true;
+}
+
+async function fetchTable(table, select='*', limit=3) {
+  const u = `${url}/rest/v1/${table}?select=${encodeURIComponent(select)}&limit=${limit}`;
+  const r = await fetch(u, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` }
+  });
+  const data = await r.json();
+  return { ok: r.ok, status: r.status, data };
+}
+
+async function testTable(table, select='*') {
+  if (!getConn()) return;
+  setStatus(table, 'pending');
+  log(`→ Teste Tabelle: ${table} …`, 'info');
+  try {
+    const { ok, status, data } = await fetchTable(table, select);
+    if (ok && Array.isArray(data)) {
+      setStatus(table, 'ok');
+      log(`✓ ${table}: ${data.length} Zeilen zurückgegeben`, 'ok');
+      if (data.length > 0) log(`  Beispiel: ${JSON.stringify(data[0]).substring(0, 200)}`, 'ok');
+      else log(`  ⚠️  Tabelle leer oder RLS blockiert Zugriff`, 'warn');
+    } else {
+      setStatus(table, 'err');
+      log(`✗ ${table}: HTTP ${status} – ${JSON.stringify(data)}`, 'err');
+    }
+  } catch(e) {
+    setStatus(table, 'err');
+    log(`✗ ${table}: Fehler – ${e.message}`, 'err');
+  }
+}
+
+async function testJoin() {
+  if (!getConn()) return;
+  setStatus('join', 'pending');
+  log('→ Teste matches-Join (wie Admin-App) …', 'info');
+  try {
+    const sel = 'id,home_score,away_score,status,round,match_date,league:leagues(id,name,country:countries(flag)),home_team:teams!home_team_id(club:clubs(name)),away_team:teams!away_team_id(club:clubs(name))';
+    const { ok, status, data } = await fetchTable('matches', sel, 5);
+    if (ok && Array.isArray(data)) {
+      setStatus('join', 'ok');
+      log(`✓ Join-Abfrage erfolgreich: ${data.length} Spiele`, 'ok');
+      if (data.length > 0) {
+        const m = data[0];
+        log(`  Liga: ${m.league?.name || '❌ NULL – leagues-Join fehlt!'}`, m.league?.name ? 'ok' : 'err');
+        log(`  Heim: ${m.home_team?.club?.name || '❌ NULL – home_team-Join fehlt!'}`, m.home_team?.club?.name ? 'ok' : 'err');
+        log(`  Auswärts: ${m.away_team?.club?.name || '❌ NULL – away_team-Join fehlt!'}`, m.away_team?.club?.name ? 'ok' : 'err');
+      } else {
+        log('  ⚠️  Keine Spiele in Tabelle – teams oder matches leer?', 'warn');
+      }
+    } else {
+      setStatus('join', 'err');
+      log(`✗ Join-Fehler: HTTP ${status} – ${JSON.stringify(data)}`, 'err');
+    }
+  } catch(e) {
+    setStatus('join', 'err');
+    log(`✗ Join-Fehler: ${e.message}`, 'err');
+  }
+}
+
+async function testAuth() {
+  if (!getConn()) return;
+  setStatus('auth', 'pending');
+  log('→ Teste Auth-Endpunkt …', 'info');
+  try {
+    const r = await fetch(`${url}/auth/v1/settings`, {
+      headers: { apikey: key }
+    });
+    if (r.ok) {
+      setStatus('auth', 'ok');
+      log('✓ Auth-Endpunkt erreichbar', 'ok');
+    } else {
+      setStatus('auth', 'err');
+      log(`✗ Auth-Fehler: HTTP ${r.status}`, 'err');
+    }
+  } catch(e) {
+    setStatus('auth', 'err');
+    log(`✗ Auth nicht erreichbar: ${e.message}`, 'err');
+  }
+}
+
+async function testRLS() {
+  if (!getConn()) return;
+  setStatus('rls', 'pending');
+  log('→ Teste RLS – Schreibzugriff auf matches …', 'info');
+  try {
+    // Versucht ein nicht-existentes Update (id=-1) – sollte 200 mit leerem Array zurückgeben
+    const r = await fetch(`${url}/rest/v1/matches?id=eq.-1`, {
+      method: 'PATCH',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ updated_at: new Date().toISOString() })
+    });
+    if (r.status === 200 || r.status === 204) {
+      setStatus('rls', 'ok');
+      log('✓ Schreibzugriff erlaubt (RLS ok)', 'ok');
+    } else if (r.status === 401 || r.status === 403) {
+      setStatus('rls', 'err');
+      log(`✗ Schreibzugriff verweigert (HTTP ${r.status}) – RLS-Policy prüfen!`, 'err');
+      log('  Tipp: SQL ausführen: SELECT * FROM pg_policies WHERE tablename = \'matches\';', 'warn');
+    } else {
+      setStatus('rls', 'warn');
+      log(`⚠️  Unerwarteter Status: ${r.status}`, 'warn');
+    }
+  } catch(e) {
+    setStatus('rls', 'err');
+    log(`✗ RLS-Test Fehler: ${e.message}`, 'err');
+  }
+}
+
+async function runAll() {
+  if (!getConn()) return;
+  clearLog();
+  log('=== Starte alle Tests ===', 'info');
+  const tables = [
+    ['countries', '*'],
+    ['leagues', '*, country:countries(code,flag)'],
+    ['clubs', '*, country:countries(flag)'],
+    ['matches', 'id,home_score,away_score,status,round,match_date'],
+    ['teams', 'id,player1,player2'],
+    ['tournaments', '*'],
+    ['worldcup_rounds', '*'],
+    ['admin_profiles', '*'],
+    ['league_standings', '*'],
+    ['associations', '*'],
+  ];
+  for (const [t, s] of tables) await testTable(t, s);
+  await testJoin();
+  await testAuth();
+  await testRLS();
+  log('=== Alle Tests abgeschlossen ===', 'info');
+}
+</script>
+</body>
+</html>
