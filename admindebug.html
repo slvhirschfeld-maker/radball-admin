@@ -281,7 +281,7 @@ async function testToken() {
   // Teste Abfrage OHNE Token (Anon)
   log('→ Teste clubs-Abfrage OHNE Token (anonym) …', 'info');
   try {
-    const r = await fetch(`${url}/rest/v1/clubs?select=id,name&limit=3`, {
+    const r = await fetch(`${url}/rest/v1/clubs?select=id,name,country:countries(flag)&limit=33`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` }
     });
     const d = await r.json();
