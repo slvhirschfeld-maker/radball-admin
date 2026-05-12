@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v12a</title>
+<title>Radball Admin v14</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -344,9 +344,18 @@ function logout() {
 }
 
 function createSBClient(url, key) {
-  const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
   const base = url.replace(/\/$/, '') + '/rest/v1';
   const authBase = url.replace(/\/$/, '') + '/auth/v1';
+
+  // Token aus localStorage lesen (wird nach Login gesetzt)
+  function getHeaders() {
+    const token = localStorage.getItem('rb_token') || key;
+    return {
+      apikey: key,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    };
+  }
 
   const client = {
     _url: url, _key: key,
@@ -360,21 +369,21 @@ function createSBClient(url, key) {
         update(data) {
           return { eq(c,v) {
             return fetch(`${base}/${table}?${c}=eq.${v}`, {
-              method:'PATCH', headers:{ ...h, Prefer:'return=representation' },
+              method:'PATCH', headers:{ ...getHeaders(), Prefer:'return=representation' },
               body: JSON.stringify(data)
             }).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
           }};
         },
         insert(data) {
           return fetch(`${base}/${table}`, {
-            method:'POST', headers:{ ...h, Prefer:'return=representation' },
+            method:'POST', headers:{ ...getHeaders(), Prefer:'return=representation' },
             body: JSON.stringify(data)
           }).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
         },
         delete() {
           return { eq(c,v) {
             return fetch(`${base}/${table}?${c}=eq.${v}`, {
-              method:'DELETE', headers:h
+              method:'DELETE', headers:getHeaders()
             }).then(()=>({error:null})).catch(e=>({error:e}));
           }};
         },
@@ -383,7 +392,7 @@ function createSBClient(url, key) {
           _fil.forEach(f => u += `&${f}`);
           if (_ord) u += `&order=${_ord}`;
           if (_lim) u += `&limit=${_lim}`;
-          fetch(u, { headers:h })
+          fetch(u, { headers: getHeaders() })
             .then(r=>r.json())
             .then(d=>resolve({data:Array.isArray(d)?d:[],error:null}))
             .catch(e=>resolve({data:[],error:e}));
@@ -395,17 +404,43 @@ function createSBClient(url, key) {
       async signInWithPassword({email, password}) {
         try {
           const r = await fetch(`${authBase}/token?grant_type=password`, {
-            method:'POST', headers:{ apikey:key, 'Content-Type':'application/json' },
+            method:'POST',
+            headers:{ apikey:key, 'Content-Type':'application/json' },
             body: JSON.stringify({email, password})
           });
           const d = await r.json();
           if (d.error) return { data:null, error:d.error };
+          // Token + User speichern
           localStorage.setItem('rb_token', d.access_token);
+          localStorage.setItem('rb_refresh', d.refresh_token);
           localStorage.setItem('rb_user', JSON.stringify(d.user));
           return { data:d, error:null };
         } catch(e) { return { data:null, error:e }; }
       },
-      async signOut() { localStorage.removeItem('rb_token'); localStorage.removeItem('rb_user'); },
+      async refreshSession() {
+        const refresh = localStorage.getItem('rb_refresh');
+        if (!refresh) return false;
+        try {
+          const r = await fetch(`${authBase}/token?grant_type=refresh_token`, {
+            method:'POST',
+            headers:{ apikey:key, 'Content-Type':'application/json' },
+            body: JSON.stringify({ refresh_token: refresh })
+          });
+          const d = await r.json();
+          if (d.access_token) {
+            localStorage.setItem('rb_token', d.access_token);
+            localStorage.setItem('rb_refresh', d.refresh_token);
+            localStorage.setItem('rb_user', JSON.stringify(d.user));
+            return true;
+          }
+          return false;
+        } catch(e) { return false; }
+      },
+      async signOut() {
+        localStorage.removeItem('rb_token');
+        localStorage.removeItem('rb_refresh');
+        localStorage.removeItem('rb_user');
+      },
       getUser() {
         const u = localStorage.getItem('rb_user');
         return { data: { user: u ? JSON.parse(u) : null } };
