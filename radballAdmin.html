@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v12</title>
+<title>Radball Admin</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -304,6 +304,10 @@ async function doLogin() {
 
   if (error) { showLoginErr('Falsche E-Mail oder falsches Passwort.'); sb = null; return; }
 
+  // Session speichern (bleibt nach Seiten-Reload erhalten)
+  localStorage.setItem('rb_sb_url', SB_URL);
+  localStorage.setItem('rb_sb_key', SB_KEY);
+
   // Admin-Profil laden
   const { data: profile } = await sb.from('admin_profiles').select('*').eq('id', data.user.id);
   const p = profile?.[0];
@@ -329,6 +333,10 @@ function showApp() {
 function logout() {
   if (sb) sb.auth.signOut();
   sb = null; demoMode = false;
+  localStorage.removeItem('rb_token');
+  localStorage.removeItem('rb_user');
+  localStorage.removeItem('rb_sb_url');
+  localStorage.removeItem('rb_sb_key');
   document.getElementById('login-screen').style.display = 'flex';
   document.querySelector('.app').style.display = 'none';
   document.getElementById('login-pw').value = '';
@@ -504,6 +512,7 @@ async function connectSB() {
 async function loadAllFromSB() {
   await Promise.all([loadLeagues(), loadClubs(), loadCountries()]);
   await Promise.all([loadMatches(), loadTournaments(), loadWC(), loadUsers()]);
+  renderAll();
   updateDash();
 }
 
