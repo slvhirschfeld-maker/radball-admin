@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v14</title>
+<title>Radball Admin v17</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -132,7 +132,7 @@ tr:hover td { background: #fafaf7; }
   </div>
 </div>
 
-<div class="app" style="display:none">
+<div class="app" id="app-wrapper" style="display:none">
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-logo">⚙ Radball Admin<span id="sb-status">Nicht verbunden</span></div>
@@ -474,6 +474,12 @@ let demoMode = false;
 // ── Demo-Daten ───────────────────────────────────────────────
 function loadDemo() {
   demoMode = true;
+  // Demo hinterlässt keine Session
+  localStorage.removeItem('rb_token');
+  localStorage.removeItem('rb_refresh');
+  localStorage.removeItem('rb_user');
+  localStorage.removeItem('rb_sb_url');
+  localStorage.removeItem('rb_sb_key');
   document.getElementById('user-name').textContent = 'Demo Admin';
   document.getElementById('user-role').textContent = 'superadmin';
   document.getElementById('sb-status').textContent = 'Demo-Modus';
