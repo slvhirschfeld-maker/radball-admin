@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin V11</title>
+<title>Radball Admin_v12</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -299,7 +299,6 @@ async function doLogin() {
 
   btn.textContent = 'Anmelden…'; btn.disabled = true;
   sb = createSBClient(SB_URL, SB_KEY);
-  console.log('[Admin] sb (doLogin) erstellt:', !!sb);
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
   btn.textContent = 'Anmelden'; btn.disabled = false;
 
@@ -313,19 +312,6 @@ async function doLogin() {
   document.getElementById('sb-status').textContent  = 'Verbunden';
 
   showApp();
-
-  // ── Debug: Token-Check ───────────────────────────────────
-  const storedToken = localStorage.getItem('rb_token');
-  console.log('[Admin] Token gespeichert:', storedToken ? storedToken.substring(0,40)+'…' : 'FEHLT');
-
-  // Test-Abfrage direkt mit fetch
-  const testR = await fetch(`${SB_URL}/rest/v1/clubs?select=id,name&limit=3`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${storedToken}` }
-  });
-  const testD = await testR.json();
-  console.log('[Admin] Test-Abfrage clubs:', testR.status, testD);
-  // ────────────────────────────────────────────────────────
-
   await loadAllFromSB();
   setupRealtime();
 }
@@ -350,18 +336,9 @@ function logout() {
 }
 
 function createSBClient(url, key) {
+  const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
   const base = url.replace(/\/$/, '') + '/rest/v1';
   const authBase = url.replace(/\/$/, '') + '/auth/v1';
-
-  // Token nach Login verwenden, sonst Anon-Key
-  const getHeaders = () => {
-    const token = localStorage.getItem('rb_token') || key;
-    return {
-      apikey: key,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    };
-  };
 
   const client = {
     _url: url, _key: key,
@@ -375,21 +352,21 @@ function createSBClient(url, key) {
         update(data) {
           return { eq(c,v) {
             return fetch(`${base}/${table}?${c}=eq.${v}`, {
-              method:'PATCH', headers:{ ...getHeaders(), Prefer:'return=representation' },
+              method:'PATCH', headers:{ ...h, Prefer:'return=representation' },
               body: JSON.stringify(data)
             }).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
           }};
         },
         insert(data) {
           return fetch(`${base}/${table}`, {
-            method:'POST', headers:{ ...getHeaders(), Prefer:'return=representation' },
+            method:'POST', headers:{ ...h, Prefer:'return=representation' },
             body: JSON.stringify(data)
           }).then(r=>r.json()).then(d=>({data:d,error:null})).catch(e=>({data:null,error:e}));
         },
         delete() {
           return { eq(c,v) {
             return fetch(`${base}/${table}?${c}=eq.${v}`, {
-              method:'DELETE', headers:getHeaders()
+              method:'DELETE', headers:h
             }).then(()=>({error:null})).catch(e=>({error:e}));
           }};
         },
@@ -398,7 +375,7 @@ function createSBClient(url, key) {
           _fil.forEach(f => u += `&${f}`);
           if (_ord) u += `&order=${_ord}`;
           if (_lim) u += `&limit=${_lim}`;
-          fetch(u, { headers: getHeaders() })
+          fetch(u, { headers:h })
             .then(r=>r.json())
             .then(d=>resolve({data:Array.isArray(d)?d:[],error:null}))
             .catch(e=>resolve({data:[],error:e}));
@@ -415,18 +392,12 @@ function createSBClient(url, key) {
           });
           const d = await r.json();
           if (d.error) return { data:null, error:d.error };
-          // Token speichern – ab jetzt wird er für alle Requests verwendet
           localStorage.setItem('rb_token', d.access_token);
-          localStorage.setItem('rb_refresh', d.refresh_token || '');
           localStorage.setItem('rb_user', JSON.stringify(d.user));
           return { data:d, error:null };
         } catch(e) { return { data:null, error:e }; }
       },
-      async signOut() {
-        localStorage.removeItem('rb_token');
-        localStorage.removeItem('rb_refresh');
-        localStorage.removeItem('rb_user');
-      },
+      async signOut() { localStorage.removeItem('rb_token'); localStorage.removeItem('rb_user'); },
       getUser() {
         const u = localStorage.getItem('rb_user');
         return { data: { user: u ? JSON.parse(u) : null } };
@@ -523,7 +494,6 @@ async function connectSB() {
   const key = document.getElementById('sb-key').value.trim();
   if (!url || !key) { toast('Bitte URL und Key eingeben'); return; }
   sb = createSBClient(url, key);
-  console.log('[Admin] sb (connectSB) erstellt:', !!sb)
   document.getElementById('sb-status').textContent = url.split('.')[0].replace('https://','');
   document.getElementById('setup-banner').classList.add('hidden');
   await loadAllFromSB();
@@ -532,30 +502,9 @@ async function connectSB() {
 }
 
 async function loadAllFromSB() {
-  console.log('[Admin] loadAllFromSB gestartet');
-  try {
-    console.log('[Admin] lade Leagues…');
-    await loadLeagues();
-    console.log('[Admin] lade Clubs…');
-    await loadClubs();
-    console.log('[Admin] lade Countries…');
-    await loadCountries();
-    console.log('[Admin] lade Matches…');
-    await loadMatches();
-    console.log('[Admin] lade Tournaments…');
-    await loadTournaments();
-    console.log('[Admin] lade WC…');
-    await loadWC();
-    console.log('[Admin] lade Users…');
-    await loadUsers();
-    console.log('[Admin] updateDash…');
-    updateDash();
-    console.log('[Admin] alles geladen ✓');
-    toast('✓ Daten geladen');
-  } catch(e) {
-    console.error('[Admin] Fehler in loadAllFromSB:', e);
-    toast('Fehler beim Laden: ' + e.message);
-  }
+  await Promise.all([loadLeagues(), loadClubs(), loadCountries()]);
+  await Promise.all([loadMatches(), loadTournaments(), loadWC(), loadUsers()]);
+  updateDash();
 }
 
 async function loadCountries() {
@@ -620,9 +569,14 @@ function setupRealtime() {
 
 // ── Render-Funktionen ────────────────────────────────────────
 function renderAll() {
-  fillLeagueFilter();
-  renderMatches(); renderTournaments(); renderLeagues();
-  renderClubs(); renderWC(); renderUsers(); updateDash();
+  try { fillLeagueFilter(); } catch(e) { console.warn('fillLeagueFilter:', e); }
+  try { renderMatches();    } catch(e) { console.warn('renderMatches:', e); }
+  try { renderTournaments();} catch(e) { console.warn('renderTournaments:', e); }
+  try { renderLeagues();    } catch(e) { console.warn('renderLeagues:', e); }
+  try { renderClubs();      } catch(e) { console.warn('renderClubs:', e); }
+  try { renderWC();         } catch(e) { console.warn('renderWC:', e); }
+  try { renderUsers();      } catch(e) { console.warn('renderUsers:', e); }
+  try { updateDash();       } catch(e) { console.warn('updateDash:', e); }
 }
 
 function fillLeagueFilter() {
