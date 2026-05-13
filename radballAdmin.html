@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v4</title>
+<title>Radball Admin v5</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -584,31 +584,339 @@ async function saveScore(id) {
   await loadMatches(); closeModal(); toast('✓ Ergebnis gespeichert');
 }
 
+// ── TURNIER-MANAGEMENT ───────────────────────────────────────
+
+// Schritt 1: Grunddaten + Spielmodus
 function openTourModal(id) {
-  const t=id?allTournaments.find(x=>x.id===id):null;
-  openModal(t?'Turnier bearbeiten':'Neues Turnier',`
-    <div class="form-group"><label class="form-label">Name</label><input id="t-name" class="form-input" value="${t?.name||''}" /></div>
+  const t = id ? allTournaments.find(x=>x.id===id) : null;
+  openModal(t ? 'Turnier bearbeiten' : 'Neues Turnier – Schritt 1/3', `
+    <div class="form-group"><label class="form-label">Name</label>
+      <input id="t-name" class="form-input" value="${t?.name||''}" /></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Stadt</label><input id="t-city" class="form-input" value="${t?.city||''}" /></div>
-      <div class="form-group"><label class="form-label">Datum</label><input id="t-date" type="date" class="form-input" value="${t?.start_date||''}" /></div>
+      <div class="form-group"><label class="form-label">Stadt</label>
+        <input id="t-city" class="form-input" value="${t?.city||''}" /></div>
+      <div class="form-group"><label class="form-label">Datum</label>
+        <input id="t-date" type="date" class="form-input" value="${t?.start_date||''}" /></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Kategorie</label>
-        <select id="t-cat" class="form-input">${['WM','EM','Weltcup','National','International','Regional'].map(c=>`<option${t?.category===c?' selected':''}>${c}</option>`).join('')}</select></div>
+        <select id="t-cat" class="form-input">
+          ${['WM','EM','Weltcup','National','International','Regional'].map(c=>`<option${t?.category===c?' selected':''}>${c}</option>`).join('')}
+        </select></div>
       <div class="form-group"><label class="form-label">Altersklasse</label>
-        <select id="t-age" class="form-input">${['Elite','Frauen','U19','U17','U15','U13','U11'].map(a=>`<option${t?.age_group===a?' selected':''}>${a}</option>`).join('')}</select></div>
+        <select id="t-age" class="form-input">
+          ${['Elite','Frauen','U19','U17','U15','U13','U11'].map(a=>`<option${t?.age_group===a?' selected':''}>${a}</option>`).join('')}
+        </select></div>
     </div>
-    <div class="form-group"><label class="form-label">Veranstalter</label><input id="t-org" class="form-input" value="${t?.organizer||''}" /></div>
-    <div class="form-group"><label class="form-label">Quali-Hinweis</label><input id="t-quali" class="form-input" value="${t?.quali_note||''}" /></div>
-    <div class="form-group"><label class="form-label">Externer Link</label><input id="t-url" class="form-input" value="${t?.external_url||''}" /></div>`,
+    <div class="form-group"><label class="form-label">Spielmodus</label>
+      <select id="t-mode" class="form-input" onchange="updateModeHint()">
+        <option value="round_robin"${t?.mode==='round_robin'?' selected':''}>Jeder gegen Jeden</option>
+        <option value="groups_ko"${t?.mode==='groups_ko'?' selected':''}>Gruppen + K.O.-Runden</option>
+        <option value="ko_only"${t?.mode==='ko_only'?' selected':''}>Nur K.O. (ab Achtelfinale)</option>
+      </select></div>
+    <div id="mode-hint" style="font-size:12px;color:#888;background:#f5f5f0;padding:9px 12px;border-radius:6px;margin-top:-6px"></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Veranstalter</label>
+      <input id="t-org" class="form-input" value="${t?.organizer||''}" /></div>
+    <div class="form-group"><label class="form-label">Quali-Hinweis</label>
+      <input id="t-quali" class="form-input" value="${t?.quali_note||''}" /></div>
+    <div class="form-group"><label class="form-label">Externer Link</label>
+      <input id="t-url" class="form-input" value="${t?.external_url||''}" /></div>`,
     `<button class="btn-out" onclick="closeModal()">Abbrechen</button>
-     <button class="btn btn-green" onclick="saveTour(${id||'null'})">Speichern ✓</button>`);
+     ${t ? `<button class="btn" style="background:#c0392b" onclick="deleteTour(${t.id})">Löschen</button>` : ''}
+     <button class="btn btn-green" onclick="${t ? `saveTour(${t.id})` : 'tourStep2()'}">
+       ${t ? 'Speichern ✓' : 'Weiter: Teams →'}
+     </button>`
+  );
+  setTimeout(updateModeHint, 50);
+}
+
+function updateModeHint() {
+  const mode = document.getElementById('t-mode')?.value;
+  const hints = {
+    round_robin: '4–8 Teams · Jedes Team spielt einmal gegen jedes andere · Tabelle entscheidet.',
+    groups_ko:   '8–16 Teams · Gruppenphase → Achtel/Viertel/Halbfinale → Finale.',
+    ko_only:     '4–32 Teams · Direktes K.O.-System · Verlierer scheidet aus.'
+  };
+  const el = document.getElementById('mode-hint');
+  if (el) el.textContent = hints[mode] || '';
+}
+
+// Schritt 2: Teams auswählen
+let tourDraft = {};
+async function tourStep2() {
+  tourDraft = {
+    name: val('t-name'), city: val('t-city'), start_date: val('t-date'),
+    category: val('t-cat'), age_group: val('t-age'), mode: val('t-mode'),
+    organizer: val('t-org'), quali_note: val('t-quali'), external_url: val('t-url')
+  };
+  if (!tourDraft.name) { toast('Bitte Turniername eingeben'); return; }
+
+  // Alle Vereine laden für Team-Auswahl
+  const {data:clubs} = await sb.from('clubs').select('id,name,country:countries(flag)').order('name');
+  const clubList = clubs || allClubs;
+
+  openModal('Neues Turnier – Schritt 2/3: Teams', `
+    <div style="font-size:13px;color:#888;margin-bottom:12px">
+      Spielmodus: <b>${{round_robin:'Jeder gegen Jeden',groups_ko:'Gruppen + K.O.',ko_only:'Nur K.O.'}[tourDraft.mode]}</b>
+      ${tourDraft.mode==='groups_ko'?`<br><br><label class="form-label" style="display:inline">Anzahl Gruppen</label>
+        <select id="t-groups" class="form-input" style="width:80px;margin-left:8px;display:inline">
+          <option value="2">2</option><option value="4">4</option>
+        </select>`:''}
+    </div>
+    <div style="font-size:12px;color:#888;margin-bottom:8px">Teams auswählen (Reihenfolge = Setzliste):</div>
+    <div id="team-selected" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:#f5f5f0;border-radius:8px;margin-bottom:12px">
+      <span style="color:#ccc;font-size:12px;align-self:center">Noch keine Teams gewählt</span>
+    </div>
+    <input id="team-search" class="form-input" placeholder="Verein suchen…" oninput="filterTourTeams()" style="margin-bottom:8px" />
+    <div id="team-list" style="max-height:220px;overflow-y:auto;border:0.5px solid #eee;border-radius:8px">
+      ${clubList.map(c=>`
+        <div class="team-pick-row" data-id="${c.id}" data-name="${c.name}" data-flag="${c.country?.flag||''}"
+          onclick="toggleTourTeam(this)"
+          style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:0.5px solid #f5f5f0;font-size:13px">
+          <span style="font-size:16px">${c.country?.flag||''}</span>
+          <span style="flex:1">${c.name}</span>
+          <span class="pick-check" style="color:#ccc;font-size:16px">○</span>
+        </div>`).join('')}
+    </div>`,
+    `<button class="btn-out" onclick="openTourModal()">← Zurück</button>
+     <button class="btn btn-green" onclick="tourStep3()">Weiter: Spielplan →</button>`
+  );
+  tourDraft.selectedTeams = [];
+}
+
+function filterTourTeams() {
+  const s = document.getElementById('team-search').value.toLowerCase();
+  document.querySelectorAll('.team-pick-row').forEach(row => {
+    row.style.display = row.dataset.name.toLowerCase().includes(s) ? 'flex' : 'none';
+  });
+}
+
+function toggleTourTeam(row) {
+  const id   = +row.dataset.id;
+  const name = row.dataset.name;
+  const flag = row.dataset.flag;
+  const idx  = tourDraft.selectedTeams.findIndex(t=>t.id===id);
+  if (idx >= 0) {
+    tourDraft.selectedTeams.splice(idx, 1);
+    row.querySelector('.pick-check').textContent = '○';
+    row.querySelector('.pick-check').style.color = '#ccc';
+    row.style.background = '';
+  } else {
+    tourDraft.selectedTeams.push({id, name, flag});
+    row.querySelector('.pick-check').textContent = '●';
+    row.querySelector('.pick-check').style.color = '#2a7a1e';
+    row.style.background = '#f0faf0';
+  }
+  // Ausgewählte anzeigen
+  const sel = document.getElementById('team-selected');
+  if (tourDraft.selectedTeams.length === 0) {
+    sel.innerHTML = '<span style="color:#ccc;font-size:12px;align-self:center">Noch keine Teams gewählt</span>';
+  } else {
+    sel.innerHTML = tourDraft.selectedTeams.map((t,i)=>
+      `<span style="background:#1a1a1a;color:#fff;border-radius:5px;padding:3px 9px;font-size:12px;display:flex;align-items:center;gap:5px">
+        <span style="color:#888;font-size:10px">${i+1}.</span> ${t.flag} ${t.name}
+        <span onclick="toggleTourTeam(document.querySelector('[data-id=\\'${t.id}\\']'))" style="cursor:pointer;color:#888;margin-left:3px">✕</span>
+      </span>`
+    ).join('');
+  }
+}
+
+// Schritt 3: Spielplan generieren & Vorschau
+function tourStep3() {
+  const teams = tourDraft.selectedTeams;
+  const mode  = tourDraft.mode;
+  const nGroups = +( document.getElementById('t-groups')?.value || 2);
+
+  if (teams.length < 2) { toast('Mindestens 2 Teams wählen'); return; }
+
+  let matches = [];
+  let preview = '';
+
+  if (mode === 'round_robin') {
+    matches = generateRoundRobin(teams);
+    preview = previewRoundRobin(teams, matches);
+  } else if (mode === 'ko_only') {
+    matches = generateKO(teams);
+    preview = previewKO(teams, matches);
+  } else if (mode === 'groups_ko') {
+    const result = generateGroupsKO(teams, nGroups);
+    matches  = result.matches;
+    preview  = result.preview;
+  }
+
+  tourDraft.matches = matches;
+
+  openModal('Neues Turnier – Schritt 3/3: Spielplan', `
+    <div style="font-size:13px;color:#888;margin-bottom:12px">
+      <b>${teams.length} Teams</b> · ${matches.length} Spiele · Modus: 
+      <b>${{round_robin:'Jeder gegen Jeden',groups_ko:'Gruppen + K.O.',ko_only:'Nur K.O.'}[mode]}</b>
+    </div>
+    <div style="max-height:380px;overflow-y:auto">${preview}</div>`,
+    `<button class="btn-out" onclick="tourStep2()">← Zurück</button>
+     <button class="btn btn-green" onclick="saveTourFull()">Turnier anlegen & Spielplan speichern ✓</button>`
+  );
+}
+
+// ── Spielplan-Generatoren ────────────────────────────────────
+
+function generateRoundRobin(teams) {
+  const matches = [];
+  let num = 1;
+  for (let i = 0; i < teams.length; i++)
+    for (let j = i+1; j < teams.length; j++)
+      matches.push({ match_number: num++, home: teams[i], away: teams[j], phase: 'Runde', group: null });
+  return matches;
+}
+
+function previewRoundRobin(teams, matches) {
+  return `<table style="width:100%;font-size:12px;border-collapse:collapse">
+    <tr style="background:#fafaf7"><th style="padding:6px 8px;text-align:left;color:#888">Nr.</th><th style="padding:6px 8px;text-align:left;color:#888">Heim</th><th></th><th style="padding:6px 8px;text-align:left;color:#888">Auswärts</th></tr>
+    ${matches.map(m=>`<tr style="border-bottom:0.5px solid #f0f0e8">
+      <td style="padding:7px 8px;color:#aaa">${m.match_number}</td>
+      <td style="padding:7px 8px;font-weight:500">${m.home.flag} ${m.home.name}</td>
+      <td style="padding:7px 8px;color:#ccc;text-align:center">–</td>
+      <td style="padding:7px 8px;font-weight:500">${m.away.flag} ${m.away.name}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function generateKO(teams) {
+  // Auf nächste 2er-Potenz auffüllen
+  const size = Math.pow(2, Math.ceil(Math.log2(teams.length)));
+  const seeded = [...teams];
+  while (seeded.length < size) seeded.push(null); // Freilos
+  const rounds = ['Finale','Halbfinale','Viertelfinale','Achtelfinale','Runde 32'];
+  const matches = [];
+  let num = 1;
+  const totalRounds = Math.log2(size);
+  for (let r = 0; r < totalRounds; r++) {
+    const phase = rounds[r] || `Runde ${Math.pow(2,r+1)}`;
+    const pairsInRound = Math.pow(2, totalRounds - 1 - r);
+    for (let p = 0; p < pairsInRound; p++) {
+      if (r === 0) {
+        // Erste Runde: echte Teams setzen
+        const h = seeded[p*2];
+        const a = seeded[p*2+1];
+        matches.push({ match_number:num++, home:h, away:a, phase, group:null, ko_round:r });
+      } else {
+        matches.push({ match_number:num++, home:null, away:null, phase, group:null, ko_round:r, tbd:true });
+      }
+    }
+  }
+  return matches;
+}
+
+function previewKO(teams, matches) {
+  const byPhase = {};
+  matches.forEach(m => { if(!byPhase[m.phase]) byPhase[m.phase]=[]; byPhase[m.phase].push(m); });
+  return Object.entries(byPhase).reverse().map(([phase, ms])=>`
+    <div style="font-size:11px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 5px">${phase}</div>
+    ${ms.map(m=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid #f5f5f0;font-size:12px">
+      <span style="color:#bbb;min-width:22px">${m.match_number}</span>
+      <span style="flex:1;font-weight:500">${m.home ? `${m.home.flag} ${m.home.name}` : '<i style="color:#bbb">Sieger Vorr.</i>'}</span>
+      <span style="color:#ccc">–</span>
+      <span style="flex:1;font-weight:500;text-align:right">${m.away ? `${m.away.flag} ${m.away.name}` : '<i style="color:#bbb">Sieger Vorr.</i>'}${m.away===null&&m.home?' <span style="color:#2a7a1e;font-size:11px">(Freilos)</span>':''}</span>
+    </div>`).join('')}
+  `).join('');
+}
+
+function generateGroupsKO(teams, nGroups) {
+  // Teams auf Gruppen verteilen (Schlangenprinzip)
+  const groups = Array.from({length:nGroups}, ()=>[]);
+  teams.forEach((t,i) => groups[i % nGroups].push(t));
+
+  let num = 1;
+  const matches = [];
+  let preview = '';
+
+  // Gruppenspiele (Jeder gegen Jeden pro Gruppe)
+  groups.forEach((grp, gi) => {
+    const letter = String.fromCharCode(65+gi);
+    preview += `<div style="font-size:11px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 5px">Gruppe ${letter} (${grp.map(t=>t.name).join(', ')})</div>`;
+    for (let i=0; i<grp.length; i++)
+      for (let j=i+1; j<grp.length; j++) {
+        matches.push({match_number:num++, home:grp[i], away:grp[j], phase:'Gruppe', group:letter, ko_round:null});
+        preview += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid #f5f5f0;font-size:12px">
+          <span style="color:#bbb;min-width:22px">${num-1}</span>
+          <span style="flex:1;font-weight:500">${grp[i].flag} ${grp[i].name}</span>
+          <span style="color:#ccc">–</span>
+          <span style="flex:1;font-weight:500;text-align:right">${grp[j].flag} ${grp[j].name}</span>
+        </div>`;
+      }
+  });
+
+  // K.O.-Runden ab Halbfinale (Platzhalter)
+  const koPhases = nGroups <= 2
+    ? ['Halbfinale','Finale']
+    : ['Viertelfinale','Halbfinale','Finale'];
+  koPhases.forEach(phase => {
+    const count = phase==='Finale'?1:phase==='Halbfinale'?2:4;
+    preview += `<div style="font-size:11px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 5px">${phase}</div>`;
+    for (let i=0; i<count; i++) {
+      matches.push({match_number:num++, home:null, away:null, phase, group:null, ko_round:1, tbd:true});
+      preview += `<div style="padding:5px 0;border-bottom:0.5px solid #f5f5f0;font-size:12px;color:#bbb;font-style:italic">
+        Spiel ${num-1}: Sieger Gruppe / Platzierung (wird nach Gruppenphase gesetzt)
+      </div>`;
+    }
+  });
+
+  return { matches, preview };
+}
+
+// ── Turnier + Spielplan speichern ────────────────────────────
+async function saveTourFull() {
+  // 1. Turnier anlegen
+  const tourData = {
+    name:         tourDraft.name,
+    city:         tourDraft.city,
+    start_date:   tourDraft.start_date,
+    category:     tourDraft.category,
+    age_group:    tourDraft.age_group,
+    organizer:    tourDraft.organizer,
+    quali_note:   tourDraft.quali_note,
+    external_url: tourDraft.external_url,
+    season:       '2025/26'
+  };
+  const {data:tData, error:tErr} = await sb.from('tournaments').insert(tourData);
+  if (tErr) { toast('Fehler beim Anlegen: ' + tErr.message); return; }
+  const tourId = Array.isArray(tData) ? tData[0]?.id : tData?.id;
+  if (!tourId) { toast('Turnier-ID nicht erhalten'); return; }
+
+  // 2. Teilnehmer anlegen
+  const entryMap = {};
+  for (const team of tourDraft.selectedTeams) {
+    const {data:eData} = await sb.from('tournament_entries').insert({
+      tournament_id: tourId,
+      team_name:     team.name,
+      club_id:       team.id
+    });
+    const entry = Array.isArray(eData) ? eData[0] : eData;
+    if (entry?.id) entryMap[team.id] = entry.id;
+  }
+
+  // 3. Spielplan speichern
+  for (const m of tourDraft.matches) {
+    await sb.from('tournament_matches').insert({
+      tournament_id:  tourId,
+      match_number:   m.match_number,
+      home_entry_id:  m.home ? entryMap[m.home.id] || null : null,
+      away_entry_id:  m.away ? entryMap[m.away.id] || null : null,
+      status:         m.tbd ? 'tbd' : 'scheduled',
+      phase:          m.phase || 'Runde',
+      group_label:    m.group || null
+    });
+  }
+
+  await loadTournaments();
+  renderTournaments();
+  closeModal();
+  toast(`✓ Turnier „${tourDraft.name}" mit ${tourDraft.matches.length} Spielen angelegt!`);
+  tourDraft = {};
 }
 
 async function saveTour(id) {
   const data={name:val('t-name'),city:val('t-city'),start_date:val('t-date'),category:val('t-cat'),age_group:val('t-age'),organizer:val('t-org'),quali_note:val('t-quali'),external_url:val('t-url')};
-  if(id) await sb.from('tournaments').update(data).eq('id',id);
-  else   await sb.from('tournaments').insert(data);
+  await sb.from('tournaments').update(data).eq('id',id);
   await loadTournaments(); renderTournaments(); closeModal(); toast('✓ Turnier gespeichert');
 }
 
