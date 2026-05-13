@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v5</title>
+<title>Radball Admin v8</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -1061,6 +1061,10 @@ function openMatchModal(id) {
     <div class="form-group"><label class="form-label">Liga</label>
       <select id="m-league" class="form-input" onchange="loadTeamsForMatch()">${leagueOpts}</select>
     </div>
+    <div id="m-teams-hint" style="display:none;font-size:12px;color:#a05a10;background:#fdf3e6;padding:9px 12px;border-radius:6px;margin-bottom:10px">
+      ℹ️ Keine Teams in der <b>teams</b>-Tabelle für diese Liga gefunden. Es werden alle Vereine angezeigt.
+      Nach dem Speichern wird automatisch ein Team-Eintrag angelegt.
+    </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Heimteam</label>
         <select id="m-home" class="form-input"><option value="">Lade Teams…</option></select>
@@ -1105,14 +1109,38 @@ function openMatchModal(id) {
 async function loadTeamsForMatch(preHome, preAway) {
   const lid = document.getElementById('m-league')?.value;
   if (!lid) return;
-  const {data} = await sb.from('teams')
-    .select('id, club:clubs(name), player1, player2')
+
+  // Zuerst Teams aus teams-Tabelle versuchen
+  const {data: teamsData} = await sb.from('teams')
+    .select('id, club:clubs(id, name), player1, player2')
     .eq('league_id', lid)
     .order('id');
-  const teams = data || [];
-  const opts = teams.map(t =>
-    `<option value="${t.id}">${t.club?.name||'?'}${t.player1?' ('+t.player1+')':''}</option>`
-  ).join('');
+
+  let opts = '';
+
+  if (teamsData && teamsData.length > 0) {
+    // Teams aus teams-Tabelle
+    opts = teamsData.map(t =>
+      `<option value="${t.id}" data-type="team">
+        ${t.club?.name||'?'}${t.player1 ? ' ('+t.player1+(t.player2?'/'+t.player2:'')+')' : ''}
+      </option>`
+    ).join('');
+  } else {
+    // Fallback: alle Vereine als Teams anzeigen
+    const {data: clubs} = await sb.from('clubs')
+      .select('id, name, country:countries(flag)')
+      .order('name');
+    opts = (clubs||allClubs).map(c =>
+      `<option value="${c.id}" data-type="club">
+        ${c.country?.flag||''} ${c.name}
+      </option>`
+    ).join('');
+
+    // Hinweis anzeigen
+    const hint = document.getElementById('m-teams-hint');
+    if (hint) hint.style.display = 'block';
+  }
+
   const empty = '<option value="">– Team wählen –</option>';
   document.getElementById('m-home').innerHTML = empty + opts;
   document.getElementById('m-away').innerHTML = empty + opts;
@@ -1122,19 +1150,45 @@ async function loadTeamsForMatch(preHome, preAway) {
 
 async function saveMatch(id) {
   const hs = val('m-hs'); const as_ = val('m-as');
+  const leagueId   = +val('m-league');
+  const homeSelId  = +val('m-home');
+  const awaySelId  = +val('m-away');
+  const homeType   = document.getElementById('m-home').selectedOptions[0]?.dataset.type;
+  const awayType   = document.getElementById('m-away').selectedOptions[0]?.dataset.type;
+  if (!homeSelId || !awaySelId)            { toast('Bitte beide Teams wählen'); return; }
+  if (homeSelId === awaySelId)             { toast('Heim- und Auswärtsteam müssen verschieden sein'); return; }
+
+  // Falls Vereine gewählt (kein Team-Eintrag): Teams auto-anlegen
+  async function ensureTeamId(clubId) {
+    // Prüfen ob Team für diesen Verein+Liga schon existiert
+    const {data} = await sb.from('teams').select('id')
+      .eq('club_id', clubId).eq('league_id', leagueId).eq('season', '2025/26');
+    if (data && data.length > 0) return data[0].id;
+    // Neu anlegen
+    const {data: newTeam} = await sb.from('teams').insert({
+      club_id: clubId, league_id: leagueId, season: '2025/26'
+    });
+    return Array.isArray(newTeam) ? newTeam[0]?.id : newTeam?.id;
+  }
+
+  let homeTeamId = homeSelId;
+  let awayTeamId = awaySelId;
+  if (homeType === 'club') homeTeamId = await ensureTeamId(homeSelId);
+  if (awayType === 'club') awayTeamId = await ensureTeamId(awaySelId);
+
+  if (!homeTeamId || !awayTeamId) { toast('Fehler beim Anlegen der Teams'); return; }
+
   const data = {
-    league_id:    +val('m-league'),
-    home_team_id: +val('m-home'),
-    away_team_id: +val('m-away'),
+    league_id:    leagueId,
+    home_team_id: homeTeamId,
+    away_team_id: awayTeamId,
     match_date:   val('m-date') || null,
     round:        +val('m-round') || null,
-    home_score:   hs !== '' ? +hs : null,
+    home_score:   hs  !== '' ? +hs  : null,
     away_score:   as_ !== '' ? +as_ : null,
     status:       val('m-status'),
     updated_at:   new Date().toISOString()
   };
-  if (!data.home_team_id || !data.away_team_id) { toast('Bitte beide Teams wählen'); return; }
-  if (data.home_team_id === data.away_team_id)  { toast('Heim- und Auswärtsteam müssen verschieden sein'); return; }
 
   let error;
   if (id) ({ error } = await sb.from('matches').update(data).eq('id', id));
