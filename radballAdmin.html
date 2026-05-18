@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v16</title>
+<title>Radball Admin v17</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -194,10 +194,14 @@ tr:hover td { background: #fafaf7; }
 </div>
 <div id="toast"></div>
 
-<script src="config.js"></script>
+<!-- Konfiguration: entweder aus config.js oder hier direkt eintragen -->
 <script>
-// Fallback falls config.js nicht geladen wurde
-if (typeof SB_URL === 'undefined') { var SB_URL = ''; var SB_KEY = ''; }
+  // Wird von config.js überschrieben falls vorhanden
+  var SB_URL = '';
+  var SB_KEY = '';
+</script>
+<script src="config.js" onerror="console.log('config.js nicht gefunden – bitte manuell eintragen')"></script>
+<script>
 // ─────────────────────────────────────────────────────────────
 
 let sb = null;
