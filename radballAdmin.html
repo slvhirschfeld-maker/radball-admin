@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v8</title>
+<title>Radball Admin v9</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -479,11 +479,123 @@ function renderTournaments() {
         <td style="color:#888;font-size:12px">${t.age_group||''}</td>
         <td><span class="badge" style="background:#edfae6;color:#2a7a1e">Aktiv</span></td>
         <td style="display:flex;gap:5px">
+          <button class="btn-out sm" onclick="openTourDetail(${t.id})">📋 Spiele</button>
           <button class="btn-out sm" onclick="openTourModal(${t.id})">✏️</button>
           <button class="btn-out sm" style="color:#c0392b" onclick="deleteTour(${t.id})">🗑</button>
         </td>
       </tr>`).join('')
     : '<tr><td colspan="7" class="empty">Keine Turniere</td></tr>';
+}
+
+// ── Turnier-Detail: Spielplan + Ergebnisse bearbeiten ────────
+async function openTourDetail(tourId) {
+  const t = allTournaments.find(x=>x.id===tourId);
+  if (!t) return;
+
+  // Teilnehmer + Spiele laden
+  const [{data: entries}, {data: matches}] = await Promise.all([
+    sb.from('tournament_entries').select('*').eq('tournament_id', tourId).order('id'),
+    sb.from('tournament_matches').select('*').eq('tournament_id', tourId).order('match_number')
+  ]);
+
+  const entryMap = {};
+  (entries||[]).forEach(e => entryMap[e.id] = e);
+
+  // Spiele nach Phase gruppieren
+  const byPhase = {};
+  (matches||[]).forEach(m => {
+    const key = m.phase || 'Runde';
+    if (!byPhase[key]) byPhase[key] = [];
+    byPhase[key].push(m);
+  });
+
+  const phaseOrder = ['Gruppe','Runde','Achtelfinale','Viertelfinale','Halbfinale','Finale','tbd'];
+
+  const matchRows = Object.entries(byPhase)
+    .sort(([a],[b]) => phaseOrder.indexOf(a) - phaseOrder.indexOf(b))
+    .map(([phase, ms]) => `
+      <div style="font-size:11px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px;padding-bottom:4px;border-bottom:0.5px solid #eee">
+        ${phase}${ms[0]?.group_label ? ' ' + ms[0].group_label : ''}
+      </div>
+      ${ms.map(m => {
+        const h = entryMap[m.home_entry_id];
+        const a = entryMap[m.away_entry_id];
+        const hasResult = m.status === 'finished';
+        const isLive    = m.status === 'live';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid #f5f5f0">
+          <span style="color:#bbb;font-size:12px;min-width:24px">${m.match_number||'–'}</span>
+          <span style="flex:1;font-size:13px;font-weight:500">${h?.team_name||'<i style="color:#bbb;font-weight:400">TBD</i>'}</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" min="0" value="${m.home_score??''}" placeholder="–"
+              style="width:44px;text-align:center;border:0.5px solid #ddd;border-radius:5px;padding:4px;font-size:15px;font-weight:500"
+              id="ts-h-${m.id}" />
+            <span style="color:#ccc">:</span>
+            <input type="number" min="0" value="${m.away_score??''}" placeholder="–"
+              style="width:44px;text-align:center;border:0.5px solid #ddd;border-radius:5px;padding:4px;font-size:15px;font-weight:500"
+              id="ts-a-${m.id}" />
+          </div>
+          <span style="flex:1;font-size:13px;font-weight:500;text-align:right">${a?.team_name||'<i style="color:#bbb;font-weight:400">TBD</i>'}</span>
+          <select id="ts-s-${m.id}" style="border:0.5px solid #ddd;border-radius:5px;padding:4px 6px;font-size:12px;color:#555">
+            <option value="scheduled"${m.status==='scheduled'?' selected':''}>Geplant</option>
+            <option value="live"${m.status==='live'?' selected':''}>Live</option>
+            <option value="finished"${m.status==='finished'?' selected':''}>Beendet</option>
+            <option value="tbd"${m.status==='tbd'?' selected':''}>TBD</option>
+          </select>
+          <button class="btn btn-sm btn-green" onclick="saveTourMatch(${m.id})">✓</button>
+        </div>`;
+      }).join('')}
+    `).join('');
+
+  // Teilnehmerliste
+  const entryList = (entries||[]).map(e =>
+    `<span style="background:#f0f0ec;border-radius:5px;padding:3px 9px;font-size:12px">${e.association?`<b>${e.association}</b> `:''} ${e.team_name}</span>`
+  ).join('');
+
+  openModal(`📋 ${t.name}`, `
+    <div style="font-size:12px;color:#888;margin-bottom:10px">
+      📅 ${t.start_date||''} · 📍 ${t.city||''} · ${(entries||[]).length} Teams · ${(matches||[]).length} Spiele
+    </div>
+    ${entryList ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">${entryList}</div>` : ''}
+    <div style="max-height:440px;overflow-y:auto;padding-right:4px">
+      ${matchRows || '<div class="empty">Keine Spiele gefunden</div>'}
+    </div>`,
+    `<button class="btn-out" onclick="closeModal()">Schließen</button>
+     <button class="btn btn-green" onclick="saveAllTourMatches(${tourId})">Alle speichern ✓</button>`
+  );
+}
+
+async function saveTourMatch(matchId) {
+  const hs = document.getElementById(`ts-h-${matchId}`)?.value;
+  const as_ = document.getElementById(`ts-a-${matchId}`)?.value;
+  const st  = document.getElementById(`ts-s-${matchId}`)?.value;
+  const {error} = await sb.from('tournament_matches').update({
+    home_score: hs !== '' ? +hs : null,
+    away_score: as_ !== '' ? +as_ : null,
+    status: st,
+    updated_at: new Date().toISOString()
+  }).eq('id', matchId);
+  if (error) toast('Fehler: ' + error.message);
+  else toast('✓ Gespeichert');
+}
+
+async function saveAllTourMatches(tourId) {
+  const {data: matches} = await sb.from('tournament_matches')
+    .select('id').eq('tournament_id', tourId);
+  for (const m of (matches||[])) {
+    const hs  = document.getElementById(`ts-h-${m.id}`)?.value;
+    const as_ = document.getElementById(`ts-a-${m.id}`)?.value;
+    const st  = document.getElementById(`ts-s-${m.id}`)?.value;
+    if (hs !== undefined) {
+      await sb.from('tournament_matches').update({
+        home_score: hs !== '' ? +hs : null,
+        away_score: as_ !== '' ? +as_ : null,
+        status: st,
+        updated_at: new Date().toISOString()
+      }).eq('id', m.id);
+    }
+  }
+  toast('✓ Alle Ergebnisse gespeichert');
+  closeModal();
 }
 
 function renderLeagues() {
