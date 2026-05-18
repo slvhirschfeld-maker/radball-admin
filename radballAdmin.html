@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v14</title>
+<title>Radball Admin v16</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -196,8 +196,7 @@ tr:hover td { background: #fafaf7; }
 
 <script src="config.js"></script>
 <script>
-// ── KONFIGURATION wird aus config.js geladen ─────────────────
-// Fallback falls config.js nicht gefunden
+// Fallback falls config.js nicht geladen wurde
 if (typeof SB_URL === 'undefined') { var SB_URL = ''; var SB_KEY = ''; }
 // ─────────────────────────────────────────────────────────────
 
@@ -312,21 +311,23 @@ function createSBClient(url, key) {
 
 // ── Session beim Start prüfen ────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  sb = createSBClient(SB_URL, SB_KEY);
-  const refresh = localStorage.getItem('rb_refresh');
-  if (refresh) {
-    toast('Session wird wiederhergestellt…');
-    const ok = await sb.auth.refreshSession();
-    if (ok) {
-      const user = JSON.parse(localStorage.getItem('rb_user') || '{}');
-      await setUserUI(user);
-      showApp();
-      await loadAllFromSB();
-      setupRealtime();
-      return;
+  // config.js geladen und echte URL eingetragen?
+  if (SB_URL && !SB_URL.includes('DEIN-PROJEKT')) {
+    sb = createSBClient(SB_URL, SB_KEY);
+    const refresh = localStorage.getItem('rb_refresh');
+    if (refresh) {
+      const ok = await sb.auth.refreshSession();
+      if (ok) {
+        const user = JSON.parse(localStorage.getItem('rb_user') || '{}');
+        await setUserUI(user);
+        showApp();
+        await loadAllFromSB();
+        setupRealtime();
+        return;
+      }
     }
   }
-  // Kein gültiger Token → Login zeigen
+  // Login-Screen zeigen
   document.getElementById('login-screen').style.display = 'flex';
 });
 
