@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v27a</title>
+<title>Radball Admin v32</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -111,6 +111,7 @@ tr:hover td { background: #fafaf7; }
     <button class="nav-btn" onclick="nav('tournaments',this)"><span>🏆</span> Turniere</button>
     <button class="nav-btn" onclick="nav('leagues',this)"><span>📋</span> Ligen</button>
     <button class="nav-btn" onclick="nav('clubs',this)"><span>🏠</span> Vereine</button>
+    <button class="nav-btn" onclick="nav('teams',this)"><span>👥</span> Teams</button>
     <button class="nav-btn" onclick="nav('worldcup',this)"><span>🌍</span> Weltcup</button>
     <button class="nav-btn" onclick="nav('users',this)"><span>👤</span> Benutzer</button>
     <div class="sidebar-footer">
@@ -171,7 +172,28 @@ tr:hover td { background: #fafaf7; }
         <tbody id="clubs-body"><tr><td colspan="5" class="loading">Lade…</td></tr></tbody></table>
       </div>
     </div>
-    <div id="page-worldcup" class="page">
+    <div id="page-teams" class="page">
+      <div class="page-title">Teams
+        <div style="display:flex;gap:8px">
+          <select id="team-filter-league" class="form-input" style="font-size:13px;padding:6px 10px" onchange="renderTeams()">
+            <option value="">Alle Ligen</option>
+          </select>
+          <select id="team-filter-season" class="form-input" style="font-size:13px;padding:6px 10px" onchange="renderTeams()">
+            <option value="">Alle Saisons</option>
+            <option value="2025/26">2025/26</option>
+            <option value="2026/27">2026/27</option>
+          </select>
+          <button class="btn" onclick="openTeamModal()">+ Team anlegen</button>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table><thead><tr>
+          <th>Verein</th><th>Liga</th><th>Saison</th><th>Spieler 1</th><th>Spieler 2</th><th>Verband</th><th></th>
+        </tr></thead>
+        <tbody id="teams-body"><tr><td colspan="7" class="loading">Lade…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
       <div class="page-title">UCI Weltcup 2025/26</div>
       <div class="card" style="padding:0;overflow:hidden">
         <table><thead><tr><th>Runde</th><th>Stadt</th><th>Land</th><th>Datum</th><th>Status</th><th>Link</th><th></th></tr></thead>
@@ -202,8 +224,10 @@ tr:hover td { background: #fafaf7; }
      Alternativ: diese Werte in eine separate config.js auslagern
      ═══════════════════════════════════════════════════════════ -->
 <script>
-  var SB_URL = 'https://DEIN-PROJEKT.supabase.co';
-  var SB_KEY = 'eyJh...DEIN-ANON-KEY...';
+
+const SB_URL = 'https://btpohaqsqajmwztmrrcp.supabase.co';  // ← anpassen
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0cG9oYXFzcWFqbXd6dG1ycmNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDY1NzEsImV4cCI6MjA5MzcyMjU3MX0.wQzp50utSWzOWZrOL4BM1s9dbiPk8duLajh9B7bBSOM';            // ← anpassen
+
 </script>
 <!-- Externe config.js überschreibt die Werte oben (optional) -->
 <script src="config.js" onerror="void(0)"></script>
@@ -389,7 +413,7 @@ function logout() {
 // ── Daten laden ──────────────────────────────────────────────
 async function loadAllFromSB() {
   await Promise.all([loadCountries(), loadLeagues(), loadClubs()]);
-  await Promise.all([loadMatches(), loadTournaments(), loadWC(), loadUsers()]);
+  await Promise.all([loadMatches(), loadTournaments(), loadWC(), loadUsers(), loadTeams()]);
   renderAll();
 }
 
@@ -427,14 +451,145 @@ function setupRealtime() {
     .subscribe(s=>{ if(s==='SUBSCRIBED') document.getElementById('rt-dot').classList.add('on'); });
 }
 
-// ── Render ───────────────────────────────────────────────────
+// ── Teams ────────────────────────────────────────────────────
+let allTeams = [];
+
+async function loadTeams() {
+  const {data} = await sb.from('teams')
+    .select('*, club:clubs(id,name), league:leagues(id,name,country:countries(flag))')
+    .order('id');
+  allTeams = data || [];
+  renderTeams();
+  // Filter-Dropdown befüllen
+  const sel = document.getElementById('team-filter-league');
+  if (sel) {
+    const existing = [...sel.options].map(o=>o.value);
+    allLeagues.forEach(l => {
+      if (!existing.includes(String(l.id)))
+        sel.innerHTML += `<option value="${l.id}">${l.country?.flag||''} ${l.name}</option>`;
+    });
+  }
+}
+
+function renderTeams() {
+  const filterLeague = document.getElementById('team-filter-league')?.value;
+  const filterSeason = document.getElementById('team-filter-season')?.value;
+  let data = allTeams;
+  if (filterLeague) data = data.filter(t => String(t.league_id) === filterLeague);
+  if (filterSeason) data = data.filter(t => t.season === filterSeason);
+
+  document.getElementById('teams-body').innerHTML = data.length
+    ? data.map(t => `<tr>
+        <td style="font-weight:500">${t.club?.name||'?'}</td>
+        <td style="font-size:12px">${t.league?.country?.flag||''} ${t.league?.name||'?'}</td>
+        <td style="color:#888;font-size:12px">${t.season||''}</td>
+        <td>${t.player1||'<span style="color:#ccc">–</span>'}</td>
+        <td>${t.player2||'<span style="color:#ccc">–</span>'}</td>
+        <td style="color:#888;font-size:12px">${t.association||'–'}</td>
+        <td style="display:flex;gap:5px">
+          <button class="btn-out sm" onclick="openTeamModal(${t.id})">✏️</button>
+          <button class="btn-out sm" style="color:#c0392b" onclick="deleteTeam(${t.id})">🗑</button>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="empty">Keine Teams</td></tr>';
+}
+
+function openTeamModal(id) {
+  const t = id ? allTeams.find(x=>x.id===id) : null;
+
+  const clubOpts = allClubs.map(c =>
+    `<option value="${c.id}"${t?.club_id===c.id?' selected':''}>${c.country?.flag||''} ${c.name}</option>`
+  ).join('');
+
+  // Ligen-Optionen – mehrfachzuweisung erlaubt (kein unique constraint im UI)
+  const leagueOpts = allLeagues.map(l =>
+    `<option value="${l.id}"${t?.league_id===l.id?' selected':''}>${l.country?.flag||''} ${l.name} (${l.season||''})</option>`
+  ).join('');
+
+  openModal(t ? 'Team bearbeiten' : 'Neues Team anlegen', `
+    <div class="form-row col2">
+      <div class="form-group"><label class="form-label">Verein</label>
+        <select id="tm-club" class="form-input">
+          <option value="">– Verein wählen –</option>${clubOpts}
+        </select></div>
+      <div class="form-group"><label class="form-label">Saison</label>
+        <select id="tm-season" class="form-input">
+          <option value="2025/26"${(!t||t.season==='2025/26')?' selected':''}>2025/26</option>
+          <option value="2026/27"${t?.season==='2026/27'?' selected':''}>2026/27</option>
+          <option value="2024/25"${t?.season==='2024/25'?' selected':''}>2024/25</option>
+        </select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Spielklasse / Liga</label>
+      <select id="tm-league" class="form-input">
+        <option value="">– Liga wählen –</option>${leagueOpts}
+      </select>
+      <div style="font-size:11px;color:#888;margin-top:4px">Ein Verein kann in mehreren Ligen gleichzeitig spielen – einfach mehrere Teams anlegen.</div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label class="form-label">Spieler 1</label>
+        <input id="tm-p1" class="form-input" value="${t?.player1||''}" placeholder="Vorname Nachname" /></div>
+      <div class="form-group"><label class="form-label">Spieler 2</label>
+        <input id="tm-p2" class="form-input" value="${t?.player2||''}" placeholder="Vorname Nachname" /></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label class="form-label">Verband / Kürzel</label>
+        <input id="tm-assoc" class="form-input" value="${t?.association||''}" placeholder="z.B. BAY, WTB, MEV" /></div>
+      <div class="form-group"><label class="form-label">Startnummer / Seed</label>
+        <input id="tm-seed" type="number" class="form-input" value="${t?.seed||''}" placeholder="optional" /></div>
+    </div>
+    <div style="font-size:12px;color:#888;background:#f5f5f0;padding:10px 12px;border-radius:6px;margin-top:4px">
+      💡 Spieler können in mehreren Teams eingesetzt werden (verschiedene Ligen oder Altersklassen).
+    </div>`,
+    `<button class="btn-out" onclick="closeModal()">Abbrechen</button>
+     ${t?`<button class="btn" style="background:#c0392b" onclick="deleteTeam(${t.id})">Löschen</button>`:''}
+     <button class="btn btn-green" onclick="saveTeam(${id||'null'})">Speichern ✓</button>`
+  );
+}
+
+async function saveTeam(id) {
+  const clubId   = +val('tm-club');
+  const leagueId = +val('tm-league');
+  const season   = val('tm-season');
+  if (!clubId)   { toast('Bitte Verein wählen');  return; }
+  if (!leagueId) { toast('Bitte Liga wählen');    return; }
+  if (!season)   { toast('Bitte Saison wählen');  return; }
+
+  const data = {
+    club_id:     clubId,
+    league_id:   leagueId,
+    season:      season,
+    player1:     val('tm-p1') || null,
+    player2:     val('tm-p2') || null,
+    association: val('tm-assoc') || null,
+    seed:        val('tm-seed') ? +val('tm-seed') : null
+  };
+
+  let error;
+  if (id) ({ error } = await sb.from('teams').update(data).eq('id', id));
+  else    ({ error } = await sb.from('teams').insert(data));
+
+  if (error) { toast('Fehler: ' + error.message); return; }
+  await loadTeams();
+  closeModal();
+  toast(id ? '✓ Team gespeichert' : '✓ Team angelegt');
+}
+
+async function deleteTeam(id) {
+  if (!confirm('Team wirklich löschen? Verknüpfte Spiele bleiben erhalten.')) return;
+  const {error} = await sb.from('teams').delete().eq('id', id);
+  if (error) { toast('Fehler: ' + error.message); return; }
+  await loadTeams();
+  closeModal();
+  toast('✓ Team gelöscht');
+}
 function renderAll() {
   try { fillLeagueFilter(); } catch(e){}
   try { renderMatches();     } catch(e){}
   try { renderTournaments(); } catch(e){}
   try { renderLeagues();     } catch(e){}
   try { renderClubs();       } catch(e){}
-  try { renderWC();          } catch(e){}
+  try { renderTeams();      } catch(e) {}
+  try { renderWC();         } catch(e){}
   try { renderUsers();       } catch(e){}
   try { updateDash();        } catch(e){}
 }
