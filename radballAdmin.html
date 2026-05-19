@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Radball Admin v17</title>
+<title>Radball Admin v27a</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; font-size: 14px; }
@@ -47,13 +47,16 @@ tr:hover td { background: #fafaf7; }
 .filter-bar select, .filter-bar input { border: 0.5px solid #ddd; border-radius: 6px; padding: 6px 10px; font-size: 13px; background: #fff; outline: none; }
 .badge { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; display: inline-block; }
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.modal { background: #fff; border-radius: 12px; padding: 24px; width: 460px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+.modal { background: #fff; border-radius: 12px; padding: 28px; width: 720px; max-width: 98vw; max-height: 95vh; overflow-y: auto; }
+.modal.sm { width: 460px; }
 .modal-title { font-size: 15px; font-weight: 500; margin-bottom: 18px; }
 .form-group { margin-bottom: 13px; }
 .form-label { font-size: 12px; color: #888; display: block; margin-bottom: 4px; }
 .form-input { border: 0.5px solid #ddd; border-radius: 6px; padding: 8px 11px; font-size: 13px; width: 100%; outline: none; }
 .form-input:focus { border-color: #1a1a1a; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.form-row.col2 { grid-template-columns: 1fr 1fr; }
+.form-row.col4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .score-box { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; }
 .score-input { border: 0.5px solid #ddd; border-radius: 8px; padding: 8px; font-size: 26px; font-weight: 500; width: 64px; text-align: center; outline: none; }
@@ -194,13 +197,16 @@ tr:hover td { background: #fafaf7; }
 </div>
 <div id="toast"></div>
 
-<!-- Konfiguration: entweder aus config.js oder hier direkt eintragen -->
+<!-- ═══════════════════════════════════════════════════════════
+     KONFIGURATION – hier deine Supabase-Daten eintragen
+     Alternativ: diese Werte in eine separate config.js auslagern
+     ═══════════════════════════════════════════════════════════ -->
 <script>
-  // Wird von config.js überschrieben falls vorhanden
-  var SB_URL = '';
-  var SB_KEY = '';
+  var SB_URL = 'https://DEIN-PROJEKT.supabase.co';
+  var SB_KEY = 'eyJh...DEIN-ANON-KEY...';
 </script>
-<script src="config.js" onerror="console.log('config.js nicht gefunden – bitte manuell eintragen')"></script>
+<!-- Externe config.js überschreibt die Werte oben (optional) -->
+<script src="config.js" onerror="void(0)"></script>
 <script>
 // ─────────────────────────────────────────────────────────────
 
@@ -722,13 +728,15 @@ async function saveScore(id) {
 function openTourModal(id) {
   const t = id ? allTournaments.find(x=>x.id===id) : null;
   openModal(t ? 'Turnier bearbeiten' : 'Neues Turnier – Schritt 1/3', `
-    <div class="form-group"><label class="form-label">Name</label>
+    <div class="form-group"><label class="form-label">Turnierbezeichnung</label>
       <input id="t-name" class="form-input" value="${t?.name||''}" /></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Stadt</label>
         <input id="t-city" class="form-input" value="${t?.city||''}" /></div>
       <div class="form-group"><label class="form-label">Datum</label>
         <input id="t-date" type="date" class="form-input" value="${t?.start_date||''}" /></div>
+      <div class="form-group"><label class="form-label">Uhrzeit</label>
+        <input id="t-time" type="time" class="form-input" value="${t?.start_time||''}" /></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Kategorie</label>
@@ -739,20 +747,28 @@ function openTourModal(id) {
         <select id="t-age" class="form-input">
           ${['Elite','Frauen','U19','U17','U15','U13','U11'].map(a=>`<option${t?.age_group===a?' selected':''}>${a}</option>`).join('')}
         </select></div>
+      <div class="form-group"><label class="form-label">Spielmodus</label>
+        <select id="t-mode" class="form-input" onchange="updateModeHint()">
+          <option value="round_robin"${t?.mode==='round_robin'?' selected':''}>Jeder gegen Jeden</option>
+          <option value="groups_ko"${t?.mode==='groups_ko'?' selected':''}>Gruppen + K.O.</option>
+          <option value="ko_only"${t?.mode==='ko_only'?' selected':''}>Nur K.O.</option>
+        </select></div>
     </div>
-    <div class="form-group"><label class="form-label">Spielmodus</label>
-      <select id="t-mode" class="form-input" onchange="updateModeHint()">
-        <option value="round_robin"${t?.mode==='round_robin'?' selected':''}>Jeder gegen Jeden</option>
-        <option value="groups_ko"${t?.mode==='groups_ko'?' selected':''}>Gruppen + K.O.-Runden</option>
-        <option value="ko_only"${t?.mode==='ko_only'?' selected':''}>Nur K.O. (ab Achtelfinale)</option>
-      </select></div>
-    <div id="mode-hint" style="font-size:12px;color:#888;background:#f5f5f0;padding:9px 12px;border-radius:6px;margin-top:-6px"></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Veranstalter</label>
-      <input id="t-org" class="form-input" value="${t?.organizer||''}" /></div>
+    <div id="mode-hint" style="font-size:12px;color:#888;background:#f5f5f0;padding:9px 12px;border-radius:6px;margin-bottom:12px"></div>
+    <div class="form-row col2">
+      <div class="form-group"><label class="form-label">Veranstalter</label>
+        <input id="t-org" class="form-input" value="${t?.organizer||''}" /></div>
+      <div class="form-group"><label class="form-label">Halle / Venue</label>
+        <input id="t-venue" class="form-input" value="${t?.venue||''}" /></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label class="form-label">Qualiplätze</label>
+        <input id="t-spots" type="number" class="form-input" value="${t?.quali_spots||''}" /></div>
+      <div class="form-group"><label class="form-label">Externer Link</label>
+        <input id="t-url" class="form-input" value="${t?.external_url||''}" /></div>
+    </div>
     <div class="form-group"><label class="form-label">Quali-Hinweis</label>
-      <input id="t-quali" class="form-input" value="${t?.quali_note||''}" /></div>
-    <div class="form-group"><label class="form-label">Externer Link</label>
-      <input id="t-url" class="form-input" value="${t?.external_url||''}" /></div>`,
+      <input id="t-quali" class="form-input" value="${t?.quali_note||''}" /></div>`,
     `<button class="btn-out" onclick="closeModal()">Abbrechen</button>
      ${t ? `<button class="btn" style="background:#c0392b" onclick="deleteTour(${t.id})">Löschen</button>` : ''}
      <button class="btn btn-green" onclick="${t ? `saveTour(${t.id})` : 'tourStep2()'}">
@@ -1193,11 +1209,7 @@ function openMatchModal(id) {
     <div class="form-group"><label class="form-label">Liga</label>
       <select id="m-league" class="form-input" onchange="loadTeamsForMatch()">${leagueOpts}</select>
     </div>
-    <div id="m-teams-hint" style="display:none;font-size:12px;color:#a05a10;background:#fdf3e6;padding:9px 12px;border-radius:6px;margin-bottom:10px">
-      ℹ️ Keine Teams in der <b>teams</b>-Tabelle für diese Liga gefunden. Es werden alle Vereine angezeigt.
-      Nach dem Speichern wird automatisch ein Team-Eintrag angelegt.
-    </div>
-    <div class="form-row">
+    <div class="form-row col2">
       <div class="form-group"><label class="form-label">Heimteam</label>
         <select id="m-home" class="form-input"><option value="">Lade Teams…</option></select>
       </div>
@@ -1205,29 +1217,27 @@ function openMatchModal(id) {
         <select id="m-away" class="form-input"><option value="">Lade Teams…</option></select>
       </div>
     </div>
+    <div id="m-teams-hint" style="display:none;font-size:12px;color:#a05a10;background:#fdf3e6;padding:9px 12px;border-radius:6px;margin-bottom:10px">
+      ℹ️ Keine Teams in der teams-Tabelle – es werden alle Vereine angezeigt. Teams werden beim Speichern automatisch angelegt.
+    </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Datum & Zeit</label>
-        <input id="m-date" type="datetime-local" class="form-input" value="${m?.match_date?.slice(0,16)||''}" />
-      </div>
+        <input id="m-date" type="datetime-local" class="form-input" value="${m?.match_date?.slice(0,16)||''}" /></div>
       <div class="form-group"><label class="form-label">Runde</label>
-        <input id="m-round" type="number" class="form-input" value="${m?.round||''}" placeholder="z.B. 14" />
-      </div>
+        <input id="m-round" type="number" class="form-input" value="${m?.round||''}" placeholder="z.B. 14" /></div>
+      <div class="form-group"><label class="form-label">Status</label>
+        <select id="m-status" class="form-input">
+          <option value="scheduled"${(!m||m.status==='scheduled')?' selected':''}>Geplant</option>
+          <option value="live"${m?.status==='live'?' selected':''}>Live</option>
+          <option value="finished"${m?.status==='finished'?' selected':''}>Beendet</option>
+          <option value="cancelled"${m?.status==='cancelled'?' selected':''}>Abgesagt</option>
+        </select></div>
     </div>
-    <div class="form-row">
+    <div class="form-row col2" style="max-width:300px">
       <div class="form-group"><label class="form-label">Heimtore</label>
-        <input id="m-hs" type="number" min="0" class="form-input" value="${m?.home_score??''}" placeholder="–" />
-      </div>
+        <input id="m-hs" type="number" min="0" class="form-input" style="font-size:22px;font-weight:500;text-align:center" value="${m?.home_score??''}" placeholder="–" /></div>
       <div class="form-group"><label class="form-label">Auswärtstore</label>
-        <input id="m-as" type="number" min="0" class="form-input" value="${m?.away_score??''}" placeholder="–" />
-      </div>
-    </div>
-    <div class="form-group"><label class="form-label">Status</label>
-      <select id="m-status" class="form-input">
-        <option value="scheduled"${(!m||m.status==='scheduled')?' selected':''}>Geplant</option>
-        <option value="live"${m?.status==='live'?' selected':''}>Live</option>
-        <option value="finished"${m?.status==='finished'?' selected':''}>Beendet</option>
-        <option value="cancelled"${m?.status==='cancelled'?' selected':''}>Abgesagt</option>
-      </select>
+        <input id="m-as" type="number" min="0" class="form-input" style="font-size:22px;font-weight:500;text-align:center" value="${m?.away_score??''}" placeholder="–" /></div>
     </div>`,
     `<button class="btn-out" onclick="closeModal()">Abbrechen</button>
      ${m?`<button class="btn" style="background:#c0392b" onclick="deleteMatch(${m.id})">Löschen</button>`:''}
